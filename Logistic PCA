@@ -1,0 +1,98 @@
+%Reconstruct activity by activity.
+% ChangeShift
+filename1='4_logPCA_U(model1)_v2.csv';
+filename2='4_logPCA_PCs(model1)_v2.csv';
+U1=csvread(filename1); 
+PC1=csvread(filename2); 
+
+[Reconstruct1,error1] = LPCA_Construction_Error(B(:,1:288),U1,PC1);
+
+%Pickup
+filename1='16_logPCA_U(model2)_v2.csv';
+filename2='16_logPCA_PCs(model2)_v2.csv';
+U2=csvread(filename1); 
+PC2=csvread(filename2); 
+[Reconstruct2,error2] = LPCA_Construction_Error(B(:,(288*1+1):288*2),U2,PC2);
+
+%Delivery
+filename1='16_logPCA_U(model3)_v2.csv';
+filename2='16_logPCA_PCs(model3)_v2.csv';
+U3=csvread(filename1);    
+PC3=csvread(filename2); 
+[Reconstruct3,error3] = LPCA_Construction_Error(B(:,(288*2+1):288*3),U3,PC3);
+
+%Anomaly
+filename1='7_logPCA_U(model4)_v2.csv';
+filename2='7_logPCA_PCs(model4)_v2.csv';
+U4=csvread(filename1);    
+PC4=csvread(filename2);
+[Reconstruct4,error4] = LPCA_Construction_Error(B(:,(288*3+1):288*4),U4,PC4);
+
+%Work Other
+filename1='10_logPCA_U(model5)_v2.csv';
+filename2='10_logPCA_PCs(model5)_v2.csv';
+U5=csvread(filename1);  
+PC5=csvread(filename2); 
+[Reconstruct5,error5] = LPCA_Construction_Error(B(:,(288*4+1):288*5),U5,PC5);
+
+%Rest
+filename1='7_logPCA_U(model6)_v2.csv';
+filename2='7_logPCA_PCs(model6)_v2.csv';
+U6=csvread(filename1);  
+PC6=csvread(filename2); 
+[Reconstruct6,error6] = LPCA_Construction_Error(B(:,(288*5+1):288*6),U6,PC6);
+
+%Gap
+filename1='3_logPCA_U(model7)_v2.csv';
+filename2='3_logPCA_PCs(model7)_v2.csv';
+U7=csvread(filename1); 
+PC7=csvread(filename2); 
+[Reconstruct7,error7] = LPCA_Construction_Error(B(:,(288*6+1):288*7),U7,PC7);
+
+%Travel
+filename1='30_logPCA_U(model8)_v2.csv';
+filename2='30_logPCA_PCs(model8)_v2.csv';
+U8=csvread(filename1);   
+PC8=csvread(filename2); 
+[Reconstruct8,error8] = LPCA_Construction_Error(B(:,(288*7+1):288*8),U8,PC8);
+
+function [NewData,errorRate] = LPCA_Construction_Error(B,U,PCs)
+%U: 2016*k  principal component loading matrix for LPCA. d/m: 2304<-size(B,2)
+% PCs: 468*k matrix of principal component scores. n: 468<-size(B,1)
+num_PC=size(U,2);
+sample_size=size(B,1);
+Psi = mean(B,1); 
+
+W_temp=PCs*U'; 
+Theta=zeros(size(B,1), size(B,2));
+for i=1:sample_size
+    Theta(i,:)=W_temp(i,:)+Psi;
+end
+
+% Get the reconstructed data
+NewData = zeros(size(X,1),size(X,2));
+P=zeros(size(X,1),size(X,2));
+for i=1:size(X,1)
+    for j=1:size(X,2)
+
+        theta_ij=Theta(i,j);
+        p_ij=exp(theta_ij)/(1+exp(theta_ij));
+        P(i,j)=p_ij;
+        
+        if p_ij>0.9
+            NewData(i,j)=1;
+        else
+            NewData(i,j)=0;
+        end
+    end
+end
+       
+errorNum = 0;
+for i=1:size(B,1)
+    for j=1:size(B,2)
+        if(NewData(i,j)~=B(i,j))
+            errorNum = errorNum + 1;
+        end
+    end
+end
+errorRate = errorNum/(size(B,1)*size(B,2));
