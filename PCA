@@ -1,0 +1,175 @@
+interval=5; %unit of computation is 5-minute interval. 
+
+filename1='5min__Activity_Matrix.csv';
+M=csvread(filename1); %Color matrix.
+
+[nrow,ncol]=size(M);
+for i=1:nrow
+    for j=1:ncol
+        if M(i,j)>=10 %merge Activity Other with Gap because 5 intervals are considered as Activity Other. 
+            M(i,j)=8;
+        end
+    end
+end
+
+%% Select input for activity count analysis with Color matrix. 
+nbr_users=nrow;
+[m,idx] = max(M(:)); %m is the maximum number of activities in M. 
+m
+x=[1:ncol];
+M_count=zeros(m,ncol); %column: 5-min interval interval; rows: activity groups. 
+M_plot=zeros(m,ncol);
+for i=1:ncol
+    col=M(:,i);
+    [count,element]=hist(col,unique(col));
+    for j =[1:m]
+        [Lia,Locb] = ismember(j,element); %check if group j is observed in timestamp i. 
+        if Lia==1
+            j_count=count(Locb); %how many users in group j in timestamp i. 
+            M_count(j,i)=M_count(j,i)+j_count;
+            M_plot(j,i)=M_count(j,i)/(nrow-M_count(m,i)-M_count((m-1),i)); %at one time interval, remove rows with Gap & Activity Other. 
+        end
+    end
+end
+M_plot=M_plot';
+%%
+x=[1:ncol];
+
+yy1 = smooth(x,M_plot(:,1),0.1,'rloess');
+yy2 = smooth(x,M_plot(:,2),0.1,'rloess');
+yy3 = smooth(x,M_plot(:,3),0.1,'rloess');
+yy4 = smooth(x,M_plot(:,4),0.1,'rloess');
+yy5 = smooth(x,M_plot(:,5),0.1,'rloess');
+yy6 = smooth(x,M_plot(:,6),0.1,'rloess');
+yy7 = smooth(x,M_plot(:,7),0.1,'rloess');
+yy8 = smooth(x,M_plot(:,8),0.1,'rloess');
+yy9 = smooth(x,M_plot(:,9),0.1,'rloess');
+
+figure
+cmap = colorcube(18);
+hold on
+
+plot(x,yy1,'Color',cmap(16,:), 'LineWidth',3)
+plot(x,yy2,'Color',cmap(2,:), 'LineWidth',3)
+plot(x,yy3,'Color',cmap(3,:), 'LineWidth',3)
+plot(x,yy4,'Color',cmap(1,:), 'LineWidth',3)
+plot(x,yy5,'Color',cmap(5,:), 'LineWidth',3)
+plot(x,yy6,'Color',cmap(6,:), 'LineWidth',3)
+plot(x,yy7,'Color',cmap(7,:), 'LineWidth',3)
+plot(x,yy8,'Color',cmap(8,:), 'LineWidth',3)
+plot(x,yy9,'Color',cmap(4,:), 'LineWidth',3)
+
+legend({'ChangeShift','Pickup','Delivery','Pickup/Delivery','Anomaly',...
+        'Work(other)','Rest','Gap','Travel'},... %,'Gap'
+        'fontsize', 18, 'Color','w','Location','north','Orientation','vertical');
+set(gca,'XTick',0:24:288)
+set(gca,'XTickLabel', {'OAM','2AM','4AM','6AM','8AM','10AM','12PM','2PM','4PM','6PM','8PM','1OPM','12AM'},'fontweight','bold','fontsize',12)
+yt = get(gca, 'ytick');
+ytl = strcat(strtrim(cellstr(num2str(yt'*100))), '%');
+set(gca, 'yticklabel', ytl,'fontweight','bold','fontsize',12);
+
+xlabel('Time of Day','fontsize',18);
+ylabel('Percentage of Activity','fontsize',18);
+
+%% Select input for PCA analysis
+B=convert_to_Binary(M);
+ 
+draw_binary(B);
+csvwrite('pca_binary.csv',B)
+
+
+%% compute eigenvectors. 
+
+sample=size(B,1);
+s_mean=mean(B,1);
+Gamma = zeros(size(B,1),size(B,2));
+A = zeros(size(B,1),size(B,2)); 
+for i =1:sample
+Gamma(i,:)=B(i,:)-s_mean;
+A(i,:)=Gamma(i,:);
+end
+C=A'*A;
+[V,D] = eig(C);
+%%
+num_vector=200;
+x_vector=1:num_vector;
+y_vector=zeros(1,num_vector);
+total_var=trace(C);
+for i=0:(num_vector-1)
+    y_vector(1,i+1)=trace(D(size(D,1)-i:size(D,1),size(D,1)-i:size(D,1)))/total_var;
+end
+
+y_vector_value=y_vector*100;
+figure 
+plot(y_vector_value,':bs','LineWidth',2,'MarkerEdgeColor','r','MarkerFaceColor','y','MarkerSize',2) %2,'MarkerEdgeColor','k','MarkerFaceColor','g','MarkerSize',4
+xlabel('Number of eigenvectors','fontsize',14);
+ylabel('Variance Explained (%)','fontsize',14);
+   
+
+%% plot eigenbehaviors. 
+eig_index = size(C,1);
+
+for i=1:3
+    draw_eigbehav(V,C, (eig_index-(i-1)));
+end
+
+%%
+% Plot construction error
+errorVector = zeros(200,1);  
+for num_Eigen=1:200
+[errorVector(num_Eigen),Matrix] = Construction_Error(B,V,num_Eigen);
+end
+errorPercentageVector = errorVector*100;
+figure 
+plot(errorPercentageVector,':bs','LineWidth',2,'MarkerEdgeColor','k','MarkerFaceColor','r','MarkerSize',2) %2,'MarkerEdgeColor','k','MarkerFaceColor','g','MarkerSize',4
+xlabel('Number of eigenvectors','fontsize',14);
+ylabel('Reconstruction error (%)','fontsize',14);
+%title('Reconstruction errors w.r.t number of eigenvectors used')
+%%
+% Choose first 82 eigenvectors %66 in original paper. 
+num_Eigen = 82;
+[error, NewData]=Construction_Error(B,V,num_Eigen);
+
+draw_binary(NewData)
+% Check the binary matrix with reconstructed matrix
+%%
+function [errorRate,NewData] = Construction_Error(B,V,num_Eigen)
+num = size(B,2);
+V_Eigen = fliplr(V(:,num-num_Eigen+1:num)); 
+Row_Eigen = V_Eigen';
+samples=size(B,1);
+Psi = mean(B,1);
+A = zeros(size(B,1),size(B,2));
+for i =1:samples
+    A(i,:)=B(i,:)-Psi;
+end
+Construct_D = Row_Eigen*A';
+W_Temp = V_Eigen*Construct_D;
+W_Temp = W_Temp';
+W = zeros(size(W_Temp,1),size(W_Temp,2));
+for i =1:samples
+    W(i,:)=W_Temp(i,:)+Psi;
+end
+% Get the reconstructed data
+NewData = zeros(size(W,1),size(W,2));
+for i=1:samples
+    for t=1:288
+        temp = [W(i,t),W(i,t+288),W(i,t+288*2),W(i,t+288*3),W(i,t+288*4),W(i,t+288*5),W(i,t+288*6),W(i,t+288*7),W(i,t+288*8)]; 
+        Mt = max(temp);
+        for k=1:9 %8
+            if(W(i,t+288*(k-1))==Mt)
+                NewData(i,t+288*(k-1))=1;
+            end
+        end
+    end
+end
+% Check the reconstruction error
+errorNum = 0;
+for i=1:size(B,1)
+    for j=1:size(B,2)
+        if(NewData(i,j)~=B(i,j))
+            errorNum = errorNum + 1;
+        end
+    end
+end
+errorRate = errorNum/(size(B,1)*size(B,2));
